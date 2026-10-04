@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,  initial-scale =1.0">
@@ -9695,7 +9696,21 @@ h2 .ri-shopping-cart-2-line {
 </div>
 
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
+<script>
+    const SUPABASE_URL =
+        "https://hrhkmwfixogweezxdtak.supabase.co";
+
+    const SUPABASE_KEY =
+        "YOUR_PUBLISHABLE_KEY_HERE";
+
+    const supabaseClient =
+        window.supabase.createClient(
+            SUPABASE_URL,
+            SUPABASE_KEY
+        );
+</script>
 
 
     <script>
@@ -21522,237 +21537,201 @@ document.addEventListener("DOMContentLoaded", function () {
 
     }
 
+/* =====================================================
+   UNIVERSAL LOAD — SUPABASE
+   ===================================================== */
 
-    /* =====================================================
-       UNIVERSAL LOAD
-       ===================================================== */
+async function loadReviewsUniversal() {
 
-    async function loadReviewsUniversal() {
+    try {
 
-        /*
-         * LOCAL STORAGE
-         */
+        /* =============================================
+           LOAD REVIEWS FROM SUPABASE
+           ============================================= */
 
-        if (
-            canUseLocalStorage()
-        ) {
-
-            try {
-
-                var saved =
-                    localStorage.getItem(
-                        STORAGE_KEY
-                    );
-
-
-                if (saved) {
-
-                    var parsed =
-                        JSON.parse(
-                            saved
-                        );
-
-
-                    if (
-                        parsed &&
-                        typeof parsed === "object"
-                    ) {
-
-                        productReviews =
-                            parsed;
-
+        const { data, error } =
+            await supabaseClient
+                .from("reviews")
+                .select(
+                    "id, product_name, name, rating, text, created_at"
+                )
+                .order(
+                    "created_at",
+                    {
+                        ascending: true
                     }
-
-                }
-
-
-                storageMode =
-                    "localStorage";
-
-
-                console.log(
-                    "Review storage: localStorage"
                 );
 
 
-                return;
+        /* =============================================
+           ERROR
+           ============================================= */
 
-            } catch (error) {
+        if (error) {
 
-                console.warn(
-                    "localStorage unavailable. Trying IndexedDB..."
-                );
-
-            }
-
-        }
-
-
-        /*
-         * INDEXED DB
-         */
-
-        try {
-
-            var indexedData =
-                await loadFromIndexedDB();
-
-
-            if (
-                indexedData &&
-                typeof indexedData === "object"
-            ) {
-
-                productReviews =
-                    indexedData;
-
-            }
-
-
-            storageMode =
-                "indexedDB";
-
-
-            console.log(
-                "Review storage: IndexedDB"
+            console.error(
+                "SUPABASE REVIEW LOAD ERROR:",
+                error
             );
 
+            /*
+             * Keep existing local data as fallback
+             */
+
+            productReviews =
+                memoryReviews || {};
+
+            storageMode =
+                "memory";
 
             return;
 
-        } catch (error) {
-
-            console.warn(
-                "IndexedDB unavailable. Using memory..."
-            );
-
         }
 
 
-        /*
-         * MEMORY
-         */
+        /* =============================================
+           CLEAR CURRENT REVIEW CACHE
+           ============================================= */
 
-        productReviews =
-            memoryReviews;
-
-
-        storageMode =
-            "memory";
+        productReviews = {};
 
 
-        console.warn(
-            "Review storage: memory fallback"
-        );
+        /* =============================================
+           CONVERT SUPABASE ROWS
+           INTO EXISTING FORMAT
+           ============================================= */
 
-    }
+        if (Array.isArray(data)) {
+
+            data.forEach(function (review) {
+
+                if (!review.product_name) {
+                    return;
+                }
 
 
-    /* =====================================================
-       UNIVERSAL SAVE
-       ===================================================== */
-
-    async function saveReviews() {
-
-        /*
-         * LOCAL STORAGE
-         */
-
-        if (
-            storageMode ===
-            "localStorage"
-        ) {
-
-            try {
-
-                localStorage.setItem(
-                    STORAGE_KEY,
-                    JSON.stringify(
-                        productReviews
+                if (
+                    !Array.isArray(
+                        productReviews[
+                            review.product_name
+                        ]
                     )
-                );
+                ) {
 
-
-                var verify =
-                    localStorage.getItem(
-                        STORAGE_KEY
-                    );
-
-
-                if (verify) {
-
-                    console.log(
-                        "REVIEWS SAVED SUCCESSFULLY - localStorage"
-                    );
-
-
-                    return true;
+                    productReviews[
+                        review.product_name
+                    ] = [];
 
                 }
 
-            } catch (error) {
 
-                console.warn(
-                    "localStorage save failed. Trying IndexedDB..."
-                );
+                productReviews[
+                    review.product_name
+                ].push({
 
-            }
+                    name:
+                        review.name || "",
 
-        }
+                    rating:
+                        Number(
+                            review.rating || 0
+                        ),
 
+                    text:
+                        review.text || "",
 
-        /*
-         * INDEXED DB
-         */
+                    date:
+                        review.created_at
 
-        try {
+                });
 
-            await saveToIndexedDB(
-                productReviews
-            );
-
-
-            storageMode =
-                "indexedDB";
-
-
-            console.log(
-                "REVIEWS SAVED SUCCESSFULLY - IndexedDB"
-            );
-
-
-            return true;
-
-        } catch (error) {
-
-            console.warn(
-                "IndexedDB save failed. Using memory..."
-            );
+            });
 
         }
 
 
+        /* =============================================
+           STORAGE MODE
+           ============================================= */
+
+        storageMode =
+            "supabase";
+
+
+        console.log(
+            "Reviews loaded from Supabase:",
+            data
+        );
+
+
+        /* =============================================
+           UPDATE PRODUCTS
+           ============================================= */
+
+        updateAllProducts();
+
+
+        updateDynamicProducts(
+            document.body
+        );
+
+
+    } catch (error) {
+
+        console.error(
+            "SUPABASE REVIEW LOAD FAILED:",
+            error
+        );
+
+
         /*
-         * MEMORY
+         * FALLBACK
          */
 
-        memoryReviews =
-            productReviews;
-
+        productReviews =
+            memoryReviews || {};
 
         storageMode =
             "memory";
 
+    }
 
-        console.warn(
-            "REVIEW SAVED IN CURRENT PAGE MEMORY"
+}
+loadReviewsUniversal();
+   /* =====================================================
+   UNIVERSAL SAVE — SUPABASE
+   ===================================================== */
+
+async function saveReviews() {
+
+    try {
+
+        /*
+         * Reviews are now saved directly
+         * through Supabase when submitted.
+         *
+         * This function is kept for compatibility
+         * with the existing review system.
+         */
+
+        console.log(
+            "REVIEWS USING SUPABASE"
         );
-
 
         return true;
 
+    } catch (error) {
+
+        console.error(
+            "Supabase review save error:",
+            error
+        );
+
+        return false;
+
     }
 
+}
 
     /* =====================================================
        PRODUCT NAME
@@ -22500,101 +22479,154 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     );
 
+/* =====================================================
+   SUBMIT REVIEW — SUPABASE
+   ===================================================== */
 
-    /* =====================================================
-       SUBMIT REVIEW
-       ===================================================== */
+if (submitReviewBtn) {
 
-    if (submitReviewBtn) {
+    submitReviewBtn.addEventListener(
+        "click",
+        async function () {
 
-        submitReviewBtn.addEventListener(
-            "click",
-            async function () {
+            /* RATING */
 
-                /*
-                 * RATING
-                 */
+            if (selectedRating < 1) {
 
-                if (
-                    selectedRating < 1
-                ) {
-
-                    if (ratingHint) {
-
-                        ratingHint.textContent =
-                            "Please select a rating";
-
-                    }
-
-                    return;
-
+                if (ratingHint) {
+                    ratingHint.textContent =
+                        "Please select a rating";
                 }
 
-
-                /*
-                 * NAME
-                 */
-
-                var name =
-                    reviewName
-                        ? reviewName.value.trim()
-                        : "";
+                return;
+            }
 
 
-                if (!name) {
+            /* NAME */
 
-                    if (reviewName) {
+            var name =
+                reviewName
+                    ? reviewName.value.trim()
+                    : "";
 
-                        reviewName.focus();
 
-                    }
+            if (!name) {
 
-                    return;
-
+                if (reviewName) {
+                    reviewName.focus();
                 }
 
-
-                /*
-                 * TEXT
-                 */
-
-                var text =
-                    reviewText
-                        ? reviewText.value.trim()
-                        : "";
+                return;
+            }
 
 
-                if (!text) {
+            /* TEXT */
 
-                    if (reviewText) {
+            var text =
+                reviewText
+                    ? reviewText.value.trim()
+                    : "";
 
-                        reviewText.focus();
 
-                    }
+            if (!text) {
 
-                    return;
-
+                if (reviewText) {
+                    reviewText.focus();
                 }
 
+                return;
+            }
 
-                /*
-                 * PRODUCT
-                 */
 
-                if (!currentProductName) {
+            /* PRODUCT */
+
+            if (!currentProductName) {
+
+                console.error(
+                    "PRODUCT NAME NOT FOUND"
+                );
+
+                return;
+            }
+
+
+            /* REVIEW DATA */
+
+            var newReview = {
+
+                name: name,
+
+                rating: Number(
+                    selectedRating
+                ),
+
+                text: text,
+
+                date: new Date().toISOString()
+
+            };
+
+
+            /* =================================================
+               SUPABASE INSERT
+               ================================================= */
+
+            try {
+
+                submitReviewBtn.disabled = true;
+
+                submitReviewBtn.textContent =
+                    "Submitting...";
+
+
+                const { data, error } =
+                    await supabaseClient
+                        .from("reviews")
+                        .insert([
+                            {
+                                product_name:
+                                    currentProductName,
+
+                                name:
+                                    name,
+
+                                rating:
+                                    Number(
+                                        selectedRating
+                                    ),
+
+                                text:
+                                    text
+                            }
+                        ])
+                        .select()
+                        .single();
+
+
+                if (error) {
 
                     console.error(
-                        "PRODUCT NAME NOT FOUND"
+                        "SUPABASE REVIEW ERROR:",
+                        error
+                    );
+
+                    alert(
+                        "Review submit nahi hua. Please try again."
                     );
 
                     return;
-
                 }
 
 
-                /*
-                 * GET PRODUCT REVIEWS
-                 */
+                console.log(
+                    "REVIEW SAVED TO SUPABASE:",
+                    data
+                );
+
+
+                /* =================================================
+                   UPDATE LOCAL PAGE CACHE
+                   ================================================= */
 
                 var reviews =
                     getReviewsForProduct(
@@ -22602,61 +22634,28 @@ document.addEventListener("DOMContentLoaded", function () {
                     );
 
 
-                /*
-                 * REVIEW
-                 */
-
-                var newReview = {
+                reviews.push({
 
                     name:
-                        name,
+                        data.name,
 
                     rating:
-                        Number(
-                            selectedRating
-                        ),
+                        Number(data.rating),
 
                     text:
-                        text,
+                        data.text,
 
                     date:
-                        new Date()
-                            .toISOString()
+                        data.created_at
 
-                };
-
-
-                reviews.push(
-                    newReview
-                );
+                });
 
 
-                console.log(
-                    "NEW REVIEW:",
-                    newReview
-                );
+                /* =================================================
+                   UPDATE PRODUCT RATING
+                   ================================================= */
 
-
-                console.log(
-                    "PRODUCT REVIEWS:",
-                    reviews
-                );
-
-
-                /*
-                 * SAVE
-                 */
-
-                await saveReviews();
-
-
-                /*
-                 * UPDATE CURRENT PRODUCT
-                 */
-
-                if (
-                    currentProductCard
-                ) {
+                if (currentProductCard) {
 
                     updateProductRating(
                         currentProductCard
@@ -22665,38 +22664,28 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
 
 
-                /*
-                 * UPDATE ALL VISIBLE/DYNAMIC PRODUCTS
-                 */
+                /* UPDATE ALL PRODUCTS */
 
                 updateAllProducts();
 
 
-                /*
-                 * REFRESH MENU PRODUCTS TOO
-                 */
+                /* UPDATE DYNAMIC PRODUCTS */
 
                 updateDynamicProducts(
                     document.body
                 );
 
 
-                /*
-                 * UPDATE REVIEW LIST
-                 */
+                /* UPDATE REVIEW LIST */
 
-                if (
-                    showingReviews
-                ) {
+                if (showingReviews) {
 
                     renderReviews();
 
                 }
 
 
-                /*
-                 * SUCCESS MESSAGE
-                 */
+                /* SUCCESS MESSAGE */
 
                 if (successMessage) {
 
@@ -22712,7 +22701,6 @@ document.addEventListener("DOMContentLoaded", function () {
                         "active"
                     );
 
-
                     reviewSuccess.setAttribute(
                         "aria-hidden",
                         "false"
@@ -22721,18 +22709,35 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
 
 
-                /*
-                 * RESET
-                 */
+                /* RESET */
 
                 resetForm();
 
+
+            } catch (error) {
+
+                console.error(
+                    "REVIEW SUBMISSION ERROR:",
+                    error
+                );
+
+                alert(
+                    "Review submit nahi hua. Please try again."
+                );
+
+            } finally {
+
+                submitReviewBtn.disabled = false;
+
+                submitReviewBtn.textContent =
+                    "Submit Review";
+
             }
-        );
 
-    }
+        }
+    );
 
-
+}
     /* =====================================================
        VIEW OTHER REVIEWS
        ===================================================== */
